@@ -1,6 +1,7 @@
 # CLAUDE.md — 抖音截流私信获客系统
 
 > 本文件是项目上下文文档，Claude Code 每次对话均自动加载。开发前必读。
+> 当前版本：v2.1（含私信审核、触发词、随机间隔、分页、导出、窗口序号）
 
 ---
 
@@ -10,7 +11,7 @@
 **当前阶段**：POC / 研发中
 **目标平台**：Windows 10/11 (64位) 桌面应用
 **技术栈**：Wails v2（Go 后端 + Vue3 前端）
-**核心功能**：评论监控 → 用户识别 → 自动私信转化
+**核心功能**：评论监控 → 关键词触发 → 用户审核 → 自动私信转化
 
 ---
 
@@ -22,8 +23,10 @@
 后端（Go）
   ├── 评论监控引擎   goroutine 并发轮询
   ├── 视频采集引擎   worker pool，带优先级队列
-  ├── 私信发送引擎   生产者-消费者，多 worker
-  ├── 账号管理       比特浏览器 CDP 集成
+  ├── 私信发送引擎   生产者-消费者，多 worker，随机间隔
+  ├── 触发词引擎     精确/模糊/语义匹配，词典扩展
+  ├── 审核队列       pending_review → approved → sending
+  ├── 账号管理       比特浏览器 CDP 集成，窗口序号绑定
   └── 数据层         SQLite (data/app.db) + AES-256-GCM 加密
 外部依赖
   ├── 比特浏览器 API  http://127.0.0.1:54345  (多账号管理)
@@ -38,7 +41,7 @@
 ```
 .
 ├── CLAUDE.md                  # 本文件
-├── PRD.md                     # 产品需求文档 v1.4
+├── PRD.md                     # 产品需求文档 v2.1
 ├── README.md                  # 项目说明
 ├── signing_server.js          # Node.js a_bogus 签名微服务 (port 9527)
 ├── package.json               # Node 依赖 (playwright)
@@ -46,10 +49,10 @@
 │   ├── go.mod                 # module: douyin-monitor, go 1.26
 │   └── internal/
 │       └── signer/            # 签名服务客户端
-├── frontend/                  # Vue3 前端（待建）
+├── frontend/                  # Vue3 前端
 │   ├── src/
 │   │   ├── pages/             # 页面组件
-│   │   ├── components/        # 公共组件
+│   │   ├── components/        # 公共组件（StartupCheck.vue 等）
 │   │   ├── stores/            # Pinia stores
 │   │   ├── types/             # TypeScript 类型
 │   │   └── wailsjs/           # Wails 自动生成的绑定
@@ -92,7 +95,7 @@
 **窗口尺寸**：1200 × 700px（固定，无需响应式）
 **字体**：Inter（英文数字），系统 UI 字体（中文）
 **图标库**：Lucide Vue Next
-**UI 库**：Ant Design Vue 3.x
+**UI 库**：Ant Design Vue 4.x
 
 ### 页面路由（Vue Router）
 
@@ -103,13 +106,32 @@
 | `/collect/auto` | `VideoCollectAuto.vue` | 视频采集-自动采集 |
 | `/dm` | `AutoDM.vue` | 自动私信 |
 | `/logs` | `Logs.vue` | 日志记录 |
+| `/settings` | `Settings.vue` | 系统设置 |
 
 ### 布局规则
 
-- 全局侧边栏（200px 宽）：4个导航项，激活状态用 Primary 色
-- 全局标题栏（52px 高）：Logo + 页面名 + 功能操作按钮
-- 主内容区：`calc(100vh - 52px)`，`overflow: auto`
+- 全局侧边栏（200px 宽）：5个导航项，激活状态用 Primary 色
+- 主内容区：`flex: 1`，`height: 700px`，`overflow: hidden`
 - 面板：`border-radius: 8px`，`padding: 16px`，白底 + `#E8E8E8` 边框
+
+### 分页规范（v2.1）
+
+所有表格使用 `<a-pagination>` 组件，不显示页码跳转输入框：
+- 视频监控列表：每页 **8 条**（行高 52px，含缩略图）
+- 评论列表：每页 **11 条**（行高 40px）
+- 搜索结果视频：每页 **9 条**（行高 52px）
+- 采集历史：每页 **8 条**（行高 40px）
+- 待审核 / 发送队列：每页 **9 条**（行高 44px）
+- 账号列表：每页 **6 条**（行高 48px）
+- 私信日志：每页 **11 条**（行高 40px）
+
+### 数据导出规范（v2.1）
+
+所有列表标题栏右侧放「↓ 导出」按钮，点击弹出：
+```
+[CSV 文件]  [TXT 文件]     [取消]
+```
+调用 `App.ExportData(type, format, filters)` → 后端写文件 → 系统文件保存对话框。
 
 ---
 
@@ -117,16 +139,19 @@
 
 ### Wails 绑定方法命名（Go → JS）
 
-所有暴露给前端的 Go 方法放在 `app.go` 的 `App` struct 中：
-
 ```
 // 评论监控
 StartMonitor() error
 StopMonitor() error
 GetMonitorStatus() MonitorStatus
-GetVideos() []MonitorVideo
-AddVideo(url string) error
+GetVideos(page, pageSize int) PagedResult[MonitorVideo]
+AddVideo(url string, profileId string) error          // v2.0: 必须指定绑定窗口
 DeleteVideo(videoId string) error
+ExportVideos(format string) string                    // v2.1: 导出，返回文件路径
+
+// 评论
+GetComments(videoId string, page, pageSize int) PagedResult[Comment]
+ExportComments(videoId string, format string) string  // v2.1
 
 // 视频采集
 SearchVideos(keyword, sortType, publishTime, duration string, count int) []VideoSearchResult
@@ -136,44 +161,81 @@ GetKeywords() []KeywordConfig
 AddKeyword(config KeywordConfig) error
 UpdateKeyword(config KeywordConfig) error
 DeleteKeyword(id string) error
-GetCollectHistory() []CollectHistory
+GetCollectHistory(page, pageSize int) PagedResult[CollectHistory]
+ExportCollectHistory(format string) string            // v2.1
+
+// 私信账号
+GetAccounts(page, pageSize int) PagedResult[BrowserProfile]
+AddAccount(profileId string) error
+ExtractAccountInfo(profileId string) error
+TestSendDM(profileId, targetUID string) error
+DeleteAccount(profileId string) error
+ExportAccounts(format string) string                  // v2.1
+LoginBitBrowserWindow(profileId string) error         // 打开比特浏览器窗口
+GetStartupCheckResult() []StartupCheckItem            // v2.0: 启动时 Cookie 检测
+
+// 私信触发词（v2.0 新增）
+GetDMKeywords() []DMKeywordRule
+AddDMKeyword(rule DMKeywordRule) error
+UpdateDMKeyword(rule DMKeywordRule) error
+DeleteDMKeyword(id string) error
+
+// 私信审核（v2.1 新增）
+GetPendingReviews(page, pageSize int) PagedResult[DMTask]
+ApproveDMTasks(taskIds []string) error
+SkipDMTasks(taskIds []string) error
+ExportPendingReviews(format string) string
 
 // 私信发送
 StartDMEngine() error
 StopDMEngine() error
 GetDMStatus() DMStatus
-GetAccounts() []BrowserProfile
-AddAccount(profileId string) error
-ExtractAccountInfo(profileId string) error
-TestSendDM(profileId, targetUID string) error
-GetDMTasks() []DMTask
+GetDMTasks(status string, page, pageSize int) PagedResult[DMTask]
 GetDMConfig() DMConfig
 SaveDMConfig(config DMConfig) error
+ExportDMTasks(status string, format string) string    // v2.1
+
+// 私信日志（v2.0 新增）
+GetDMSendLogs(profileId, status string, page, pageSize int) PagedResult[DMSendLog]
+ExportDMSendLogs(format string) string
+
+// 系统配置
+CheckBitBrowserStatus() ServiceStatus
+CheckSigningServiceStatus() ServiceStatus
+RefreshCookieFromBitBrowser(browserId string) CookieRefreshResult
+GetSystemConfig() SystemConfig
+SaveBitBrowserConfig(config BitBrowserConfig) error
+SaveGlobalConfig(config GlobalConfig) error
+
+// 数据导出通用
+ExportData(dataType, format string, filters map[string]string) string
 
 // 日志
-GetLogs(level, keyword string, limit int) []LogEntry
+GetLogs(level, keyword string, page, pageSize int) PagedResult[LogEntry]
 ClearLogs() error
-ExportLogs(path string) error
+ExportLogs(format string) string
 ```
 
 ### Wails Events（后端 → 前端推送）
 
 ```
 monitor:status-change    // 监控状态变更
-monitor:new-comments     // 新评论数组
+monitor:new-comments     // 新评论数组（payload: Comment[]）
 collect:progress         // 采集进度
 collect:status-change    // 采集引擎状态
-dm:task-update           // 任务状态变更
-dm:stats-update          // 今日统计更新
-log:new-entry            // 新日志条目
-cookie:expired           // Cookie 过期告警
+dm:task-update           // 任务状态变更（payload: DMTask）
+dm:stats-update          // 今日统计更新（payload: DMStats）
+dm:review-new            // 新待审核任务（payload: DMTask，v2.1）
+log:new-entry            // 新系统日志条目
+dm:send-log              // 新私信发送日志（payload: DMSendLog，v2.0）
+cookie:expired           // Cookie 过期告警（payload: profile_id）
 ```
 
 ---
 
 ## 数据模型（关键字段）
 
-### MonitorVideo
+### MonitorVideo（v2.0 更新）
 ```typescript
 interface MonitorVideo {
   video_id: string
@@ -187,10 +249,12 @@ interface MonitorVideo {
   last_check_at: string
   added_at: string
   source_keyword?: string
+  bound_profile_id: string   // v2.0: 绑定的比特浏览器窗口 ID
+  bound_seq: number          // v2.0: 绑定窗口序号
 }
 ```
 
-### Comment
+### Comment（v2.1 更新）
 ```typescript
 interface Comment {
   comment_id: string
@@ -203,13 +267,14 @@ interface Comment {
   region: string
   like_count: number
   created_at: number  // Unix timestamp
-  dm_status: 'pending' | 'sent' | 'failed' | 'skip' | 'blocked'
+  dm_status: 'pending_review' | 'approved' | 'sending' | 'sent' | 'failed' | 'skip' | 'blocked'
 }
 ```
 
-### BrowserProfile
+### BrowserProfile（v2.0 更新）
 ```typescript
 interface BrowserProfile {
+  seq: number                // v2.0: 窗口序号 #1/#2...
   profile_id: string
   display_name: string
   douyin_uid: string
@@ -224,16 +289,94 @@ interface BrowserProfile {
 }
 ```
 
-### DMConfig
+### DMConfig（v2.0 更新）
 ```typescript
 interface DMConfig {
   template_path: string
-  min_interval_sec: number   // 最小发送间隔（秒），默认 60
+  min_interval_sec: number         // v2.0: 随机间隔下限，默认 60
+  max_interval_sec: number         // v2.0: 随机间隔上限，默认 180
   daily_limit_per_account: number  // 单账号日限，默认 100
   daily_limit_total: number        // 总日限，默认 500
   concurrency: number              // 并发线程，默认 3
   auto_add_to_monitor: boolean
   new_video_only: boolean
+  full_send_mode: boolean          // v2.0: true=全量发送，false=仅匹配触发词
+}
+```
+
+### DMKeywordRule（v2.0 新增）
+```typescript
+interface DMKeywordRule {
+  id: string
+  keyword: string
+  match_type: 'exact' | 'fuzzy' | 'semantic'
+  category?: 'purchase_intent' | 'price_inquiry' | 'contact_request' | 'channel_source' | 'custom'
+  enabled: boolean
+  hit_count: number
+  created_at: string
+}
+```
+
+### DMTask（v2.1 更新）
+```typescript
+interface DMTask {
+  task_id: string
+  target_uid: string
+  target_nickname: string
+  target_sec_uid: string
+  source_video_id: string
+  source_video_title: string
+  source_comment_content: string   // v2.1: 原始评论内容
+  trigger_keyword: string          // v2.1: 命中的触发词
+  message_preview: string          // v2.1: 变量替换后私信预览
+  executed_profile_id: string
+  executed_seq: number             // v2.0: 执行账号序号
+  status: 'pending_review' | 'approved' | 'sending' | 'sent' | 'failed' | 'skip' | 'blocked'
+  error_msg: string
+  retry_count: number
+  created_at: string
+  sent_at: string
+}
+```
+
+### DMSendLog（v2.0 新增）
+```typescript
+interface DMSendLog {
+  id: string
+  sent_at: string
+  window_seq: number
+  profile_id: string
+  sender_nickname: string
+  target_uid: string
+  target_nickname: string
+  source_video_id: string
+  source_video_title: string
+  comment_content: string
+  trigger_keyword: string
+  message_content: string
+  status: 'sent' | 'failed' | 'rate_limited'
+  error_msg: string
+}
+```
+
+### PagedResult（通用分页容器）
+```typescript
+interface PagedResult<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+}
+```
+
+### StartupCheckItem（v2.0 新增）
+```typescript
+interface StartupCheckItem {
+  seq: number
+  profile_id: string
+  nickname: string
+  cookie_status: 'valid' | 'expired' | 'unknown'
+  message: string
 }
 ```
 
@@ -251,6 +394,24 @@ interface LogEntry {
 
 ## 关键业务规则
 
+### 窗口-视频-私信绑定关系（v2.0）
+- 每个监控视频绑定一个比特浏览器窗口（`bound_profile_id`）
+- DM 引擎发送时：评论 → `video.bound_profile_id` → 使用该账号发私信
+- 不同视频可绑定不同窗口；一个窗口可被多个视频绑定
+- 视频列表和私信日志都显示窗口序号（#1/#2...）
+
+### 私信审核流程（v2.1）
+1. 评论被采集 → 与触发词引擎匹配
+2. 命中 → 生成 DMTask（`status: pending_review`）
+3. 未命中 + 全量模式关闭 → 丢弃
+4. 未命中 + 全量模式开启 → 生成低优先级 DMTask（`status: pending_review`）
+5. 用户在「待审核」Tab 审核 → 批量通过（`approved`）或跳过（`skip`）
+6. `approved` 的任务进入发送队列，引擎按随机间隔执行
+
+### 随机间隔发送（v2.0）
+- 实际间隔 = `rand(min_interval_sec, max_interval_sec)`（均匀随机）
+- min 不可大于 max；UI 步进器步长 10 秒
+
 ### Cookie 刷新流程（§16 / §10.5）
 1. 调用 `POST http://127.0.0.1:54345/browser/open` 打开比特浏览器窗口
 2. 通过 CDP ws 连接 → 提取 `sessionid` / `sessionid_ss`
@@ -263,6 +424,13 @@ interface LogEntry {
 - 依赖 Node.js 签名服务（port 9527）提供 `a_bogus` 签名
 - 当前 IM Protobuf 发送链路**未验证**，UI 流程正常展示，后端实现为 stub
 - 连续失败 ≥3 次的账号自动暂停
+- 每次发送后写入 `dm_send_logs` 表
+
+### 软件启动检测（v2.0）
+- `App.vue` `onMounted` 调用 `GetStartupCheckResult()`
+- 并发检测所有已注册窗口 Cookie 有效性
+- 结果以 `StartupCheck.vue` 模态弹窗展示
+- 过期账号显示红色 ❌，提供"前往设置"快捷跳转
 
 ### 评论监控引擎
 - 每个视频一个独立 goroutine，channel 传递结果
@@ -291,11 +459,14 @@ interface LogEntry {
 - 评论流使用 Wails Events 实时推送，不要轮询
 - 日志条目通过 Event 追加到列表，不要全量刷新
 - 表格超出高度时内部滚动（`overflow-y: auto`）
+- 分页组件统一使用 `<a-pagination>` 不显示 `showSizeChanger` 和 `showQuickJumper`
+- 所有导出调用后端 `ExportData`，不要在前端拼接文件内容
 
 ### 当前已知限制（POC）
 - IM 发送链路未验证 → `TestSendDM` 为 stub，返回 mock 成功
 - SQLite 迁移脚本待建
 - 比特浏览器 Cookie 提取依赖本地安装 BitBrowser
+- 语义匹配使用词典扩展实现，非 NLP embedding
 
 ---
 

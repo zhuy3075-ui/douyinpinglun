@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   MessageSquare,
@@ -8,6 +8,13 @@ import {
   FileText,
   Settings,
 } from 'lucide-vue-next'
+import StartupCheck from './components/StartupCheck.vue'
+
+const startupCheckRef = ref<InstanceType<typeof StartupCheck> | null>(null)
+
+onMounted(() => {
+  // Startup check auto-opens inside the component itself
+})
 
 const route = useRoute()
 const router = useRouter()
@@ -98,6 +105,9 @@ function navigate(item: NavItem) {
       </router-view>
     </main>
   </div>
+
+  <!-- Startup cookie check modal -->
+  <StartupCheck ref="startupCheckRef" />
 </template>
 
 <style scoped>
