@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import {
   Settings,
   Globe,
@@ -11,38 +11,73 @@ import {
   Save,
   Monitor,
   Zap,
+  Plus,
+  Trash2,
+  Wifi,
+  WifiOff,
+  UserCheck,
+  UserX,
+  HelpCircle,
+  Edit3,
+  Check,
+  X,
+  Clock,
 } from 'lucide-vue-next'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import * as App from '../wailsjs/go/main/App'
 
-// ── 服务状态 ──────────────────────────────────────────────────────────────
+// ── Types ───────────────────────────────────────────────────────────────────
+interface BrowserWindow {
+  id: string
+  name: string
+  seq: number
+  conn_status: 'connected' | 'disconnected' | 'checking' | 'unknown'
+  login_status: 'valid' | 'expired' | 'need_verify' | 'unknown'
+  cookie_updated_at: string
+  enabled: boolean
+  created_at: string
+}
+
+interface RefreshItem {
+  id: string
+  name: string
+  seq: number
+  status: 'idle' | 'refreshing' | 'success' | 'fail' | 'login_invalid'
+  message: string
+}
+
+// ── 服务状态 ─────────────────────────────────────────────────────────────────
 const bitBrowserStatus = ref<'checking' | 'online' | 'offline'>('checking')
 const signingStatus = ref<'checking' | 'online' | 'offline'>('checking')
-const refreshingCookie = ref(false)
-const savingGlobal = ref(false)
+
+// ── 端口配置 ─────────────────────────────────────────────────────────────────
+const bitConfig = reactive({ api_port: 54345 })
+const signingConfig = reactive({ port: 9527 })
 const savingBit = ref(false)
 
-// ── 比特浏览器配置 ────────────────────────────────────────────────────────
-const bitConfig = reactive({
-  api_port: 54345,
-  default_browser_id: '',
-})
+// ── 窗口管理 ─────────────────────────────────────────────────────────────────
+const windows = ref<BrowserWindow[]>([])
+const loadingWindows = ref(false)
 
-// ── 签名服务配置 ──────────────────────────────────────────────────────────
-const signingConfig = reactive({
-  port: 9527,
-})
+// Add modal
+const addModalVisible = ref(false)
+const addForm = reactive({ name: '', id: '' })
+const addTesting = ref(false)
+const addTestResult = ref<'idle' | 'success' | 'fail'>('idle')
+const addSaving = ref(false)
 
-// ── Cookie 刷新 ───────────────────────────────────────────────────────────
-const cookieState = reactive({
-  browser_id: '',
-  last_updated: '',
-  cookie_length: 0,
-  status: '' as '' | 'success' | 'error',
-  message: '',
-})
+// Per-row actions
+const testingId = ref('')
+const checkingLoginId = ref('')
+const deletingId = ref('')
+const editingId = ref('')
+const editingName = ref('')
 
-// ── 全局参数 ──────────────────────────────────────────────────────────────
+// ── Cookie 批量刷新 ──────────────────────────────────────────────────────────
+const refreshingAll = ref(false)
+const refreshResults = ref<RefreshItem[]>([])
+
+// ── 全局参数 ─────────────────────────────────────────────────────────────────
 const globalConfig = reactive({
   monitor_interval_sec: 60,
   monitor_retry_count: 3,
@@ -50,59 +85,204 @@ const globalConfig = reactive({
   auto_blacklist_threshold: 5,
   dingtalk_webhook: '',
 })
+const savingGlobal = ref(false)
 
+// ── Computed ─────────────────────────────────────────────────────────────────
+const activeWindows = computed(() => windows.value.filter(w => w.enabled))
+
+function truncateId(id: string) {
+  if (id.length <= 16) return id
+  return id.slice(0, 8) + '…' + id.slice(-6)
+}
+
+function formatTime(iso: string) {
+  if (!iso) return '—'
+  try {
+    const d = new Date(iso)
+    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  } catch { return '—' }
+}
+
+// ── Service check ────────────────────────────────────────────────────────────
 async function checkServices() {
   bitBrowserStatus.value = 'checking'
   signingStatus.value = 'checking'
   try {
     const r = await App.CheckBitBrowserStatus()
     bitBrowserStatus.value = r?.online ? 'online' : 'offline'
-  } catch {
-    bitBrowserStatus.value = 'offline'
-  }
+  } catch { bitBrowserStatus.value = 'offline' }
   try {
     const r = await App.CheckSigningServiceStatus()
     signingStatus.value = r?.online ? 'online' : 'offline'
-  } catch {
-    signingStatus.value = 'offline'
-  }
+  } catch { signingStatus.value = 'offline' }
 }
 
-async function handleRefreshCookie() {
-  if (!cookieState.browser_id.trim()) {
-    message.warning('请输入比特浏览器窗口 ID')
-    return
-  }
-  refreshingCookie.value = true
-  cookieState.status = ''
-  cookieState.message = ''
+// ── Window management ────────────────────────────────────────────────────────
+async function loadWindows() {
+  loadingWindows.value = true
   try {
-    const result = await App.RefreshCookieFromBitBrowser(cookieState.browser_id.trim())
-    cookieState.status = 'success'
-    cookieState.last_updated = result?.updated_at || new Date().toLocaleString()
-    cookieState.cookie_length = result?.cookie_length || 0
-    cookieState.message = `Cookie 提取成功，长度 ${cookieState.cookie_length} 字符，签名服务已同步`
-    message.success('Cookie 已刷新')
-  } catch (e: any) {
-    cookieState.status = 'error'
-    cookieState.message = e?.message || '提取失败，请确认比特浏览器已运行且窗口ID正确'
-    message.error(cookieState.message)
+    windows.value = await App.GetBrowserWindows() || []
+  } catch { windows.value = [] }
+  finally { loadingWindows.value = false }
+}
+
+function openAddModal() {
+  addForm.name = ''
+  addForm.id = ''
+  addTestResult.value = 'idle'
+  addModalVisible.value = true
+}
+
+async function testAddConnection() {
+  if (!addForm.id.trim()) { message.warning('请输入窗口 ID'); return }
+  addTesting.value = true
+  addTestResult.value = 'idle'
+  try {
+    await App.TestBrowserWindow(addForm.id.trim())
+    addTestResult.value = 'success'
+  } catch {
+    addTestResult.value = 'fail'
   } finally {
-    refreshingCookie.value = false
+    addTesting.value = false
   }
 }
 
+async function handleAddWindow() {
+  if (!addForm.name.trim()) { message.warning('请输入窗口名称'); return }
+  if (!addForm.id.trim()) { message.warning('请输入窗口 ID'); return }
+  if (addTestResult.value !== 'success') { message.warning('请先测试连接并确保成功'); return }
+  addSaving.value = true
+  try {
+    await App.AddBrowserWindow(addForm.id.trim(), addForm.name.trim())
+    message.success('窗口已添加')
+    addModalVisible.value = false
+    await loadWindows()
+  } catch (e: any) {
+    message.error(e?.message || '添加失败，请检查窗口 ID 是否正确')
+  } finally {
+    addSaving.value = false
+  }
+}
+
+async function testWindowConn(w: BrowserWindow) {
+  testingId.value = w.id
+  w.conn_status = 'checking'
+  try {
+    await App.TestBrowserWindow(w.id)
+    w.conn_status = 'connected'
+    message.success(`#${w.seq} ${w.name} 连接正常`)
+  } catch {
+    w.conn_status = 'disconnected'
+    message.error(`#${w.seq} ${w.name} 连接失败，请确认比特浏览器已运行`)
+  } finally {
+    testingId.value = ''
+  }
+}
+
+async function checkWindowLogin(w: BrowserWindow) {
+  checkingLoginId.value = w.id
+  try {
+    const result = await App.CheckWindowLogin(w.id)
+    w.login_status = result?.status || 'unknown'
+    if (result?.status === 'valid') {
+      message.success(`#${w.seq} ${w.name} 抖音登录有效`)
+    } else if (result?.status === 'need_verify' || result?.status === 'expired') {
+      Modal.warning({
+        title: `窗口 #${w.seq} ${w.name} 需要重新验证`,
+        content: '抖音登录已失效，请打开对应的比特浏览器窗口，手动完成验证或重新登录后再刷新 Cookie。',
+        okText: '知道了',
+      })
+    } else {
+      message.warning(`#${w.seq} ${w.name} 登录状态未知`)
+    }
+  } catch {
+    w.login_status = 'unknown'
+    message.error('检测失败，请确认比特浏览器连接正常')
+  } finally {
+    checkingLoginId.value = ''
+  }
+}
+
+function startEditName(w: BrowserWindow) {
+  editingId.value = w.id
+  editingName.value = w.name
+}
+
+function cancelEditName() {
+  editingId.value = ''
+  editingName.value = ''
+}
+
+async function saveEditName(w: BrowserWindow) {
+  const newName = editingName.value.trim()
+  if (!newName) { cancelEditName(); return }
+  try {
+    await App.UpdateWindowName(w.id, newName)
+    w.name = newName
+  } catch { message.error('更新失败') }
+  editingId.value = ''
+}
+
+async function deleteWindow(w: BrowserWindow) {
+  Modal.confirm({
+    title: `停用窗口 #${w.seq}「${w.name}」？`,
+    content: '停用后该窗口不再参与采集和私信发送，但已有数据仍会保留，历史记录不受影响。',
+    okText: '确认停用',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      deletingId.value = w.id
+      try {
+        await App.DeleteBrowserWindow(w.id)
+        w.enabled = false
+        message.success(`#${w.seq} ${w.name} 已停用`)
+      } catch { message.error('操作失败') }
+      finally { deletingId.value = '' }
+    },
+  })
+}
+
+// ── Cookie batch refresh ──────────────────────────────────────────────────────
+async function refreshAllCookies() {
+  const active = activeWindows.value
+  if (!active.length) { message.warning('没有可用的活跃窗口'); return }
+  refreshingAll.value = true
+  refreshResults.value = active.map(w => ({
+    id: w.id, name: w.name, seq: w.seq, status: 'idle', message: '',
+  }))
+
+  for (const item of refreshResults.value) {
+    item.status = 'refreshing'
+    try {
+      const result = await App.RefreshCookieFromBitBrowser(item.id)
+      if (result?.login_invalid) {
+        item.status = 'login_invalid'
+        item.message = '抖音登录已失效，请手动验证后重试'
+        const w = windows.value.find(x => x.id === item.id)
+        if (w) w.login_status = 'expired'
+      } else {
+        item.status = 'success'
+        item.message = `Cookie 已更新（${result?.cookie_length || 0} 字符）`
+        const w = windows.value.find(x => x.id === item.id)
+        if (w) w.cookie_updated_at = result?.updated_at || new Date().toISOString()
+      }
+    } catch (e: any) {
+      item.status = 'fail'
+      item.message = e?.message || '提取失败，请检查比特浏览器连接'
+    }
+  }
+  refreshingAll.value = false
+}
+
+// ── Save configs ──────────────────────────────────────────────────────────────
 async function handleSaveBitConfig() {
   savingBit.value = true
   try {
     await App.SaveBitBrowserConfig({ ...bitConfig, ...signingConfig })
     message.success('配置已保存')
     await checkServices()
-  } catch {
-    message.error('保存失败')
-  } finally {
-    savingBit.value = false
-  }
+  } catch { message.error('保存失败') }
+  finally { savingBit.value = false }
 }
 
 async function handleSaveGlobal() {
@@ -110,26 +290,19 @@ async function handleSaveGlobal() {
   try {
     await App.SaveGlobalConfig({ ...globalConfig })
     message.success('全局配置已保存')
-  } catch {
-    message.error('保存失败')
-  } finally {
-    savingGlobal.value = false
-  }
+  } catch { message.error('保存失败') }
+  finally { savingGlobal.value = false }
 }
 
+// ── Init ──────────────────────────────────────────────────────────────────────
 onMounted(async () => {
-  await checkServices()
+  await Promise.all([checkServices(), loadWindows()])
   try {
     const cfg = await App.GetSystemConfig()
     if (cfg) {
-      Object.assign(bitConfig, cfg.bit_browser || {})
-      Object.assign(signingConfig, cfg.signing || {})
-      Object.assign(globalConfig, cfg.global || {})
-      if (cfg.cookie_store) {
-        cookieState.browser_id = cfg.cookie_store.browser_id || ''
-        cookieState.last_updated = cfg.cookie_store.updated_at || ''
-        cookieState.cookie_length = cfg.cookie_store.cookie_length || 0
-      }
+      if (cfg.bit_browser) bitConfig.api_port = cfg.bit_browser.port || 54345
+      if (cfg.signing) signingConfig.port = cfg.signing.port || 9527
+      if (cfg.global) Object.assign(globalConfig, cfg.global)
     }
   } catch { /* use defaults */ }
 })
@@ -151,7 +324,7 @@ onMounted(async () => {
     <!-- Scrollable body -->
     <div class="settings-body">
 
-      <!-- ── 服务状态卡片 ─────────────────────────────────────────────────── -->
+      <!-- ── 1. 服务状态 ──────────────────────────────────────────────────── -->
       <div class="section-card">
         <div class="section-title">
           <Monitor :size="14" color="#595959" />
@@ -165,7 +338,7 @@ onMounted(async () => {
               <span class="service-port">:{{ bitConfig.api_port }}</span>
             </div>
             <div class="service-status" :class="bitBrowserStatus">
-              <span v-if="bitBrowserStatus === 'checking'" class="status-dot checking" />
+              <span v-if="bitBrowserStatus === 'checking'" class="status-dot" />
               <CheckCircle v-else-if="bitBrowserStatus === 'online'" :size="14" color="#52C41A" />
               <XCircle v-else :size="14" color="#FF4D4F" />
               <span>{{ { checking: '检测中…', online: '运行中', offline: '未运行' }[bitBrowserStatus] }}</span>
@@ -179,25 +352,186 @@ onMounted(async () => {
               <span class="service-port">:{{ signingConfig.port }}</span>
             </div>
             <div class="service-status" :class="signingStatus">
-              <span v-if="signingStatus === 'checking'" class="status-dot checking" />
+              <span v-if="signingStatus === 'checking'" class="status-dot" />
               <CheckCircle v-else-if="signingStatus === 'online'" :size="14" color="#52C41A" />
               <XCircle v-else :size="14" color="#FF4D4F" />
               <span>{{ { checking: '检测中…', online: '运行中', offline: '未运行' }[signingStatus] }}</span>
             </div>
           </div>
           <div class="service-divider" />
-          <div class="service-tip" v-if="signingStatus === 'offline'">
+          <div v-if="signingStatus === 'offline'" class="service-tip">
             <AlertCircle :size="13" color="#FA8C16" />
             <span>在项目根目录执行 <code>npm run sign</code> 启动签名服务</span>
           </div>
         </div>
       </div>
 
-      <!-- ── 比特浏览器配置 ──────────────────────────────────────────────── -->
+      <!-- ── 2. 比特浏览器窗口管理 ────────────────────────────────────────── -->
       <div class="section-card">
         <div class="section-title">
           <Globe :size="14" color="#595959" />
-          比特浏览器 &amp; 签名服务配置
+          比特浏览器窗口管理
+          <span class="section-desc">— 窗口与抖音账号绑定，采集和私信均通过窗口执行</span>
+          <div style="flex:1" />
+          <a-button type="primary" size="small" @click="openAddModal">
+            <template #icon><Plus :size="12" /></template>
+            添加窗口
+          </a-button>
+        </div>
+
+        <!-- Empty state -->
+        <div v-if="!loadingWindows && windows.length === 0" class="empty-windows">
+          <Globe :size="32" color="#D9D9D9" />
+          <p>暂无窗口配置，点击「添加窗口」录入比特浏览器窗口 ID</p>
+        </div>
+
+        <!-- Loading -->
+        <div v-else-if="loadingWindows" class="empty-windows">
+          <a-spin />
+        </div>
+
+        <!-- Windows table -->
+        <div v-else class="windows-table-wrap">
+          <table class="windows-table">
+            <thead>
+              <tr>
+                <th class="col-seq">#</th>
+                <th class="col-name">窗口名称</th>
+                <th class="col-id">窗口 ID</th>
+                <th class="col-conn">连接状态</th>
+                <th class="col-login">抖音登录</th>
+                <th class="col-cookie">Cookie 更新</th>
+                <th class="col-actions">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="w in windows"
+                :key="w.id"
+                :class="{ 'row-disabled': !w.enabled }"
+              >
+                <!-- # -->
+                <td class="col-seq">
+                  <span class="seq-badge">#{{ w.seq }}</span>
+                </td>
+
+                <!-- 窗口名称 -->
+                <td class="col-name">
+                  <div v-if="editingId !== w.id" class="name-cell">
+                    <span :class="{ 'text-disabled': !w.enabled }">{{ w.name }}</span>
+                    <button
+                      v-if="w.enabled"
+                      class="icon-btn"
+                      @click="startEditName(w)"
+                      title="重命名"
+                    >
+                      <Edit3 :size="12" color="#8C8C8C" />
+                    </button>
+                  </div>
+                  <div v-else class="name-edit">
+                    <input
+                      v-model="editingName"
+                      class="name-input"
+                      @keyup.enter="saveEditName(w)"
+                      @keyup.escape="cancelEditName"
+                      autofocus
+                    />
+                    <button class="icon-btn confirm" @click="saveEditName(w)">
+                      <Check :size="12" color="#00B96B" />
+                    </button>
+                    <button class="icon-btn cancel" @click="cancelEditName">
+                      <X :size="12" color="#FF4D4F" />
+                    </button>
+                  </div>
+                </td>
+
+                <!-- 窗口 ID -->
+                <td class="col-id">
+                  <span
+                    class="id-text"
+                    :title="w.id"
+                    @click="() => { navigator.clipboard?.writeText(w.id); message.info('已复制') }"
+                  >{{ truncateId(w.id) }}</span>
+                </td>
+
+                <!-- 连接状态 -->
+                <td class="col-conn">
+                  <span v-if="testingId === w.id" class="status-chip checking">
+                    <span class="dot-pulse" />检测中
+                  </span>
+                  <span v-else-if="w.conn_status === 'connected'" class="status-chip connected">
+                    <Wifi :size="11" />已连接
+                  </span>
+                  <span v-else-if="w.conn_status === 'disconnected'" class="status-chip disconnected">
+                    <WifiOff :size="11" />未连接
+                  </span>
+                  <span v-else class="status-chip unknown">
+                    <HelpCircle :size="11" />未测试
+                  </span>
+                </td>
+
+                <!-- 抖音登录 -->
+                <td class="col-login">
+                  <span v-if="checkingLoginId === w.id" class="status-chip checking">
+                    <span class="dot-pulse" />检测中
+                  </span>
+                  <span v-else-if="w.login_status === 'valid'" class="status-chip connected">
+                    <UserCheck :size="11" />有效
+                  </span>
+                  <span v-else-if="w.login_status === 'expired'" class="status-chip disconnected">
+                    <UserX :size="11" />已失效
+                  </span>
+                  <span v-else-if="w.login_status === 'need_verify'" class="status-chip warning">
+                    <AlertCircle :size="11" />需验证
+                  </span>
+                  <span v-else class="status-chip unknown">
+                    <HelpCircle :size="11" />未检测
+                  </span>
+                </td>
+
+                <!-- Cookie 更新时间 -->
+                <td class="col-cookie">
+                  <span class="cookie-time">
+                    <Clock :size="11" color="#8C8C8C" style="flex-shrink:0" />
+                    {{ formatTime(w.cookie_updated_at) }}
+                  </span>
+                </td>
+
+                <!-- 操作 -->
+                <td class="col-actions">
+                  <template v-if="w.enabled">
+                    <a-button
+                      size="small"
+                      :loading="testingId === w.id"
+                      @click="testWindowConn(w)"
+                    >测试连接</a-button>
+                    <a-button
+                      size="small"
+                      :loading="checkingLoginId === w.id"
+                      @click="checkWindowLogin(w)"
+                    >检测登录</a-button>
+                    <a-button
+                      size="small"
+                      danger
+                      :loading="deletingId === w.id"
+                      @click="deleteWindow(w)"
+                    >
+                      <template #icon><Trash2 :size="11" /></template>
+                    </a-button>
+                  </template>
+                  <span v-else class="disabled-tag">已停用</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── 3. 服务端口配置 ────────────────────────────────────────────────── -->
+      <div class="section-card">
+        <div class="section-title">
+          <Globe :size="14" color="#595959" />
+          服务端口配置
         </div>
         <div class="form-grid">
           <div class="form-row">
@@ -222,17 +556,6 @@ onMounted(async () => {
               <span class="form-hint">默认 9527，Node.js 签名微服务端口（npm run sign）</span>
             </div>
           </div>
-          <div class="form-row">
-            <label class="form-label">默认窗口 ID</label>
-            <div class="form-control">
-              <a-input
-                v-model:value="bitConfig.default_browser_id"
-                placeholder="粘贴比特浏览器 profile_id（选填，自动填充到 Cookie 刷新）"
-                style="width:360px"
-                allow-clear
-              />
-            </div>
-          </div>
         </div>
         <div class="form-actions">
           <a-button type="primary" :loading="savingBit" @click="handleSaveBitConfig">
@@ -242,12 +565,12 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- ── Cookie 一键刷新 ─────────────────────────────────────────────── -->
+      <!-- ── 4. Cookie 一键刷新 ────────────────────────────────────────────── -->
       <div class="section-card">
         <div class="section-title">
           <Key :size="14" color="#595959" />
           Cookie 一键刷新
-          <span class="section-desc">— 从比特浏览器窗口提取最新 Cookie 并同步到签名服务</span>
+          <span class="section-desc">— 对所有活跃窗口依次提取最新 Cookie 并同步到签名服务</span>
         </div>
 
         <div class="cookie-flow">
@@ -260,47 +583,57 @@ onMounted(async () => {
           <div class="flow-step"><span class="step-num">4</span>同步签名服务</div>
         </div>
 
-        <div class="form-row" style="margin-top:12px">
-          <label class="form-label">窗口 ID</label>
-          <div class="form-control gap-8">
-            <a-input
-              v-model:value="cookieState.browser_id"
-              placeholder="比特浏览器 profile_id，如 9023104163bd47ffa78466d1944d0338"
-              style="width:360px"
-              allow-clear
-            />
-            <a-button
-              type="primary"
-              :loading="refreshingCookie"
-              @click="handleRefreshCookie"
-            >
-              <template #icon><RefreshCw :size="13" /></template>
-              一键刷新 Cookie
-            </a-button>
-          </div>
+        <div class="cookie-actions">
+          <a-button
+            type="primary"
+            :loading="refreshingAll"
+            :disabled="activeWindows.length === 0"
+            @click="refreshAllCookies"
+          >
+            <template #icon><RefreshCw :size="13" /></template>
+            一键刷新所有窗口 Cookie
+          </a-button>
+          <span v-if="activeWindows.length > 0" class="cookie-count-tip">
+            共 {{ activeWindows.length }} 个活跃窗口
+          </span>
+          <span v-else class="form-hint">请先在上方添加窗口</span>
         </div>
 
-        <!-- 状态提示 -->
-        <div v-if="cookieState.status" class="cookie-result" :class="cookieState.status">
-          <CheckCircle v-if="cookieState.status === 'success'" :size="14" />
-          <XCircle v-else :size="14" />
-          <span>{{ cookieState.message }}</span>
-          <span v-if="cookieState.last_updated" class="result-time">
-            更新于 {{ cookieState.last_updated }}
-          </span>
-        </div>
-        <div v-else-if="cookieState.last_updated" class="cookie-result last">
-          <CheckCircle :size="14" color="#8C8C8C" />
-          <span>上次更新：{{ cookieState.last_updated }}（Cookie 长度 {{ cookieState.cookie_length }} 字符）</span>
+        <!-- Refresh progress -->
+        <div v-if="refreshResults.length" class="refresh-list">
+          <div
+            v-for="item in refreshResults"
+            :key="item.id"
+            class="refresh-row"
+            :class="item.status"
+          >
+            <span class="refresh-seq">#{{ item.seq }}</span>
+            <span class="refresh-name">{{ item.name }}</span>
+            <div class="refresh-status">
+              <span v-if="item.status === 'idle'" class="text-placeholder">等待中…</span>
+              <span v-else-if="item.status === 'refreshing'" class="text-info">
+                <span class="dot-pulse" />刷新中…
+              </span>
+              <span v-else-if="item.status === 'success'" class="text-success">
+                <CheckCircle :size="13" />{{ item.message }}
+              </span>
+              <span v-else-if="item.status === 'login_invalid'" class="text-warning">
+                <AlertCircle :size="13" />{{ item.message }}
+              </span>
+              <span v-else class="text-danger">
+                <XCircle :size="13" />{{ item.message }}
+              </span>
+            </div>
+          </div>
         </div>
 
         <div class="cookie-tip">
           <AlertCircle :size="12" color="#FA8C16" />
-          <span>Cookie 通常 24 小时内有效。如遇采集失败或私信发送失败，请先点此刷新 Cookie。</span>
+          <span>Cookie 通常 24 小时内有效。如遇采集失败或私信发送失败，请先点此刷新 Cookie。若提示登录失效，请打开对应比特浏览器窗口手动验证。</span>
         </div>
       </div>
 
-      <!-- ── 全局参数配置 ────────────────────────────────────────────────── -->
+      <!-- ── 5. 全局参数 ────────────────────────────────────────────────────── -->
       <div class="section-card">
         <div class="section-title">
           <Settings :size="14" color="#595959" />
@@ -376,6 +709,76 @@ onMounted(async () => {
 
     </div>
   </div>
+
+  <!-- ── 添加窗口 Modal ──────────────────────────────────────────────────── -->
+  <a-modal
+    v-model:open="addModalVisible"
+    title="添加比特浏览器窗口"
+    :footer="null"
+    :mask-closable="false"
+    width="480px"
+  >
+    <div class="add-modal-body">
+      <div class="add-form-row">
+        <label class="add-label">窗口名称 <span class="required">*</span></label>
+        <a-input
+          v-model:value="addForm.name"
+          placeholder="如：主账号、备用号1、矩阵账号A"
+          style="width:100%"
+          allow-clear
+        />
+      </div>
+
+      <div class="add-form-row">
+        <label class="add-label">窗口 ID <span class="required">*</span></label>
+        <a-input
+          v-model:value="addForm.id"
+          placeholder="比特浏览器 profile_id，如 9023104163bd47ffa784..."
+          style="width:100%"
+          allow-clear
+          @change="addTestResult = 'idle'"
+        />
+        <div class="add-hint">在比特浏览器 → 我的浏览器 → 对应窗口处查看 ID</div>
+      </div>
+
+      <!-- Test connection -->
+      <div class="add-test-row">
+        <a-button
+          :loading="addTesting"
+          @click="testAddConnection"
+        >
+          <template #icon><Wifi :size="13" /></template>
+          测试连接
+        </a-button>
+
+        <div v-if="addTestResult === 'success'" class="test-result success">
+          <CheckCircle :size="14" color="#52C41A" />
+          <span>连接成功，可以保存</span>
+        </div>
+        <div v-else-if="addTestResult === 'fail'" class="test-result fail">
+          <XCircle :size="14" color="#FF4D4F" />
+          <span>连接失败，请确认比特浏览器已运行且 ID 正确</span>
+        </div>
+        <div v-else class="test-result idle">
+          <HelpCircle :size="14" color="#8C8C8C" />
+          <span>请先测试连接</span>
+        </div>
+      </div>
+
+      <div class="add-modal-footer">
+        <a-button @click="addModalVisible = false">取消</a-button>
+        <a-button
+          type="primary"
+          :loading="addSaving"
+          :disabled="addTestResult !== 'success'"
+          @click="handleAddWindow"
+        >
+          <template #icon><Plus :size="13" /></template>
+          保存窗口
+        </a-button>
+      </div>
+    </div>
+  </a-modal>
 </template>
 
 <style scoped>
@@ -441,7 +844,6 @@ onMounted(async () => {
 .service-row {
   display: flex;
   align-items: center;
-  gap: 0;
   flex-wrap: wrap;
   row-gap: 8px;
 }
@@ -483,6 +885,7 @@ onMounted(async () => {
   border-radius: 50%;
   background: #8C8C8C;
   animation: pulse 1s infinite;
+  display: inline-block;
 }
 
 @keyframes pulse {
@@ -514,6 +917,161 @@ onMounted(async () => {
   font-size: 11px;
 }
 
+/* ── Windows Table ── */
+.empty-windows {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 0;
+  gap: 10px;
+  color: var(--color-text-placeholder);
+  font-size: 13px;
+}
+
+.windows-table-wrap {
+  overflow-x: auto;
+}
+
+.windows-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.windows-table th {
+  background: #FAFAFA;
+  color: var(--color-text-secondary);
+  font-weight: 600;
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.windows-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #F5F5F5;
+  vertical-align: middle;
+}
+
+.windows-table tr:last-child td { border-bottom: none; }
+
+.row-disabled td { opacity: 0.45; }
+
+.col-seq { width: 44px; }
+.col-name { width: 140px; }
+.col-id { width: 180px; }
+.col-conn { width: 96px; }
+.col-login { width: 96px; }
+.col-cookie { width: 110px; }
+.col-actions { width: 180px; }
+
+.seq-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 20px;
+  background: #F5F5F5;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  font-family: monospace;
+}
+
+/* Name cell */
+.name-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.text-disabled { color: var(--color-text-placeholder); }
+
+.icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.name-cell:hover .icon-btn { opacity: 1; }
+.name-edit { display: flex; align-items: center; gap: 3px; }
+
+.name-input {
+  border: 1px solid var(--color-primary);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+  outline: none;
+  width: 100px;
+}
+
+/* ID cell */
+.id-text {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.id-text:hover { background: #F5F5F5; }
+
+/* Status chips */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.status-chip.connected { background: #F6FFED; color: #52C41A; }
+.status-chip.disconnected { background: #FFF1F0; color: #FF4D4F; }
+.status-chip.checking { background: #F5F5F5; color: #8C8C8C; }
+.status-chip.warning { background: #FFF7E6; color: #FA8C16; }
+.status-chip.unknown { background: #FAFAFA; color: #8C8C8C; border: 1px solid #F0F0F0; }
+
+.dot-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 1s infinite;
+  display: inline-block;
+}
+
+/* Cookie time */
+.cookie-time {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-placeholder);
+  font-size: 11px;
+}
+
+/* Actions */
+.col-actions .ant-btn + .ant-btn { margin-left: 4px; }
+.disabled-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: #F5F5F5;
+  color: #8C8C8C;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
 /* ── Form ── */
 .form-grid {
   display: flex;
@@ -528,7 +1086,7 @@ onMounted(async () => {
 }
 
 .form-label {
-  width: 120px;
+  width: 130px;
   font-size: 13px;
   color: var(--color-text-primary);
   flex-shrink: 0;
@@ -540,8 +1098,6 @@ onMounted(async () => {
   gap: 8px;
   flex: 1;
 }
-
-.form-control.gap-8 { gap: 8px; }
 
 .form-hint {
   font-size: 11px;
@@ -556,12 +1112,12 @@ onMounted(async () => {
   gap: 8px;
 }
 
-/* ── Cookie Flow ── */
+/* ── Cookie section ── */
 .cookie-flow {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 0 6px;
+  padding: 8px 0 6px;
 }
 
 .flow-step {
@@ -585,36 +1141,132 @@ onMounted(async () => {
   justify-content: center;
 }
 
-.flow-arrow {
-  color: #D9D9D9;
-  font-size: 14px;
-}
+.flow-arrow { color: #D9D9D9; font-size: 14px; }
 
-/* Cookie result */
-.cookie-result {
+.cookie-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border-radius: 6px;
+  gap: 10px;
+  margin: 12px 0 0;
+}
+
+.cookie-count-tip {
   font-size: 12px;
-  margin-top: 10px;
-}
-.cookie-result.success { background: #F6FFED; color: #52C41A; border: 1px solid #B7EB8F; }
-.cookie-result.error   { background: #FFF1F0; color: #FF4D4F; border: 1px solid #FFA39E; }
-.cookie-result.last    { background: #FAFAFA; color: var(--color-text-placeholder); border: 1px solid #F0F0F0; }
-
-.result-time {
-  margin-left: auto;
-  opacity: 0.7;
+  color: var(--color-text-secondary);
 }
 
-.cookie-tip {
+/* Refresh list */
+.refresh-list {
+  margin-top: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.refresh-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid #F5F5F5;
+  font-size: 12px;
+}
+.refresh-row:last-child { border-bottom: none; }
+.refresh-row.success { background: #FAFFFE; }
+.refresh-row.fail { background: #FFF9F9; }
+.refresh-row.login_invalid { background: #FFFBF0; }
+
+.refresh-seq {
+  width: 28px;
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.refresh-name {
+  width: 100px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  flex-shrink: 0;
+}
+
+.refresh-status {
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 5px;
+}
+
+.text-placeholder { color: var(--color-text-placeholder); }
+.text-info { color: #1677FF; display: flex; align-items: center; gap: 5px; }
+.text-success { color: #52C41A; display: flex; align-items: center; gap: 5px; }
+.text-warning { color: #FA8C16; display: flex; align-items: center; gap: 5px; }
+.text-danger { color: #FF4D4F; display: flex; align-items: center; gap: 5px; }
+
+.cookie-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
   font-size: 11px;
   color: var(--color-text-placeholder);
-  margin-top: 10px;
+  margin-top: 12px;
+  line-height: 1.5;
+}
+
+/* ── Add Modal ── */
+.add-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.add-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.add-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.required { color: #FF4D4F; }
+
+.add-hint {
+  font-size: 11px;
+  color: var(--color-text-placeholder);
+}
+
+.add-test-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #FAFAFA;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+}
+
+.test-result {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.test-result.success { color: #52C41A; }
+.test-result.fail { color: #FF4D4F; }
+.test-result.idle { color: #8C8C8C; }
+
+.add-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid #F0F0F0;
 }
 </style>
