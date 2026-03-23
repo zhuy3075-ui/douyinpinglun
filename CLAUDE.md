@@ -1,7 +1,7 @@
 # CLAUDE.md — 抖音截流私信获客系统
 
 > 本文件是项目上下文文档，Claude Code 每次对话均自动加载。开发前必读。
-> 当前版本：v2.1（含私信审核、触发词、随机间隔、分页、导出、窗口序号）
+> 当前版本：v2.2（含窗口管理重构、登录检测、Cookie批量刷新、软删除、数据清空）
 
 ---
 
@@ -164,15 +164,23 @@ DeleteKeyword(id string) error
 GetCollectHistory(page, pageSize int) PagedResult[CollectHistory]
 ExportCollectHistory(format string) string            // v2.1
 
-// 私信账号
+// 比特浏览器窗口管理（v2.2 新增，Settings 页面核心）
+GetBrowserWindows() []BrowserWindow
+AddBrowserWindow(profileId, name string) error        // 仅在 TestBrowserWindow 通过后调用
+TestBrowserWindow(profileId string) map                // 验证 BitBrowser API 连接，返回 {online}
+CheckWindowLogin(profileId string) map                 // CDP 验证抖音 Cookie，返回 {status, message}
+UpdateWindowName(profileId, name string) error         // 内联重命名
+DeleteBrowserWindow(profileId string) error            // 软删除，enabled=false
+
+// 私信账号（从 BrowserWindow 动态派生）
 GetAccounts(page, pageSize int) PagedResult[BrowserProfile]
 AddAccount(profileId string) error
 ExtractAccountInfo(profileId string) error
 TestSendDM(profileId, targetUID string) error
 DeleteAccount(profileId string) error
-ExportAccounts(format string) string                  // v2.1
-LoginBitBrowserWindow(profileId string) error         // 打开比特浏览器窗口
-GetStartupCheckResult() []StartupCheckItem            // v2.0: 启动时 Cookie 检测
+ExportAccounts(format string) string
+LoginBitBrowserWindow(profileId string) error
+GetStartupCheckResult() []StartupCheckItem            // 读取 browserWindows，检测所有 enabled 窗口
 
 // 私信触发词（v2.0 新增）
 GetDMKeywords() []DMKeywordRule
@@ -271,10 +279,24 @@ interface Comment {
 }
 ```
 
-### BrowserProfile（v2.0 更新）
+### BrowserWindow（v2.2 新增，Settings 页主数据模型）
+```typescript
+interface BrowserWindow {
+  id: string                 // 比特浏览器 profile_id
+  name: string               // 用户自定义窗口名称
+  seq: number                // 自动递增序号 #1/#2…
+  conn_status: 'connected' | 'disconnected' | 'checking' | 'unknown'
+  login_status: 'valid' | 'expired' | 'need_verify' | 'unknown'
+  cookie_updated_at: string  // 最近成功刷新 Cookie 的时间
+  enabled: boolean           // false = 已停用（软删除）
+  created_at: string
+}
+```
+
+### BrowserProfile（v2.0，由 BrowserWindow 动态派生）
 ```typescript
 interface BrowserProfile {
-  seq: number                // v2.0: 窗口序号 #1/#2...
+  seq: number                // 窗口序号 #1/#2...
   profile_id: string
   display_name: string
   douyin_uid: string
@@ -412,10 +434,22 @@ interface LogEntry {
 - 实际间隔 = `rand(min_interval_sec, max_interval_sec)`（均匀随机）
 - min 不可大于 max；UI 步进器步长 10 秒
 
-### Cookie 刷新流程（§16 / §10.5）
-1. 调用 `POST http://127.0.0.1:54345/browser/open` 打开比特浏览器窗口
-2. 通过 CDP ws 连接 → 提取 `sessionid` / `sessionid_ss`
-3. 用 IM user info API 验证 Cookie 有效性
+### Cookie 批量刷新流程（v2.2 升级）
+- 入口：Settings 页 → Cookie 一键刷新 → 「一键刷新所有窗口 Cookie」
+- 对所有 `enabled=true` 的窗口依次执行：
+  1. 调用 `POST http://127.0.0.1:54345/browser/open` 打开比特浏览器窗口
+  2. 通过 CDP ws 连接 → 提取 `sessionid` / `sessionid_ss`
+  3. 用 IM user info API 验证 Cookie 有效性
+- 登录失效（`login_invalid: true`）时：前端显示橙色警告，提示用户手动验证
+- 原单窗口输入ID刷新方式已废弃
+
+### 窗口管理业务规则（v2.2 新增）
+- 用户必须在 Settings 先添加并测试连接，才能在其他页面使用该窗口
+- 添加流程：输入名称+ID → 测试连接通过 → 保存（保存按钮在测试前禁用）
+- 停用（软删除）：`enabled=false`，历史数据保留，下拉选择器中不再显示
+- `GetAccounts` 从内存中的 `browserWindows` 动态派生，Settings 配置立即同步到其他页面
+
+### Cookie 刷新流程（§16 / §10.5，单窗口）
 4. 写入 `data/cookies/{profile_id}.enc`（AES-256-GCM 加密）
 5. 通知签名服务更新 Cookie
 6. Wails Event 推送前端更新状态
@@ -428,8 +462,9 @@ interface LogEntry {
 
 ### 软件启动检测（v2.0）
 - `App.vue` `onMounted` 调用 `GetStartupCheckResult()`
-- 并发检测所有已注册窗口 Cookie 有效性
+- 读取所有 `enabled=true` 的 `BrowserWindow`，展示其 `login_status`
 - 结果以 `StartupCheck.vue` 模态弹窗展示
+- 若无已注册窗口：弹窗提示「请前往设置添加比特浏览器窗口」
 - 过期账号显示红色 ❌，提供"前往设置"快捷跳转
 
 ### 评论监控引擎

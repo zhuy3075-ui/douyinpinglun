@@ -56,9 +56,11 @@ export async function TestBrowserWindow(profileId) {
 
 export async function CheckWindowLogin(profileId) {
   await delay(1500)
-  // Stub: returns unknown so user can see the flow
-  // In production, uses CDP to check Douyin session cookies
-  return { status: 'unknown', message: '无法连接到比特浏览器，请确认服务已启动' }
+  // Stub (POC): returns valid to simulate a logged-in window.
+  // Production: CDP WS → read sessionid cookies → call Douyin IM user info API.
+  const w = MOCK_BROWSER_WINDOWS.find(x => x.id === profileId)
+  if (w) w.login_status = 'valid'
+  return { status: 'valid', message: 'Cookie 检测通过（POC 模式）' }
 }
 
 export async function UpdateWindowName(profileId, name) {
