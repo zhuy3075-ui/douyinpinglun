@@ -1,0 +1,357 @@
+{
+  "generated_at": "2026-03-23T01:57:24.779Z",
+  "cookie_length": 6254,
+  "results": {
+    "comment_list_basic": {
+      "label": "评论列表接口（基础）",
+      "ok": true,
+      "status": 200,
+      "api_status": 0,
+      "detail": {
+        "total": 1726,
+        "count": 9,
+        "has_more": 1,
+        "cursor": 10
+      }
+    },
+    "comment_list_page2": {
+      "label": "评论列表接口（翻页 cursor=10）",
+      "ok": true,
+      "status": 200,
+      "api_status": 0,
+      "detail": {
+        "cursor_now": 20,
+        "count": 10,
+        "has_more": 1
+      }
+    },
+    "search_basic": {
+      "label": "视频搜索（默认，无筛选）",
+      "params": {
+        "keyword": "旅游",
+        "offset": 0,
+        "count": 10,
+        "search_channel": "aweme_video_web",
+        "search_source": "normal_search",
+        "enable_history": 1,
+        "is_filter_search": 0
+      },
+      "ok": true,
+      "warn": "返回0条视频（可能无结果）",
+      "http_status": 200,
+      "api_status": 0,
+      "count": 0
+    },
+    "search_time_1day": {
+      "label": "时间筛选=一天内",
+      "params": {
+        "keyword": "旅游",
+        "offset": 0,
+        "count": 10,
+        "search_channel": "aweme_video_web",
+        "is_filter_search": 1,
+        "publish_time": 1
+      },
+      "ok": true,
+      "warn": "返回0条视频（可能无结果）",
+      "http_status": 200,
+      "api_status": 0,
+      "count": 0
+    },
+    "search_time_1week": {
+      "label": "时间筛选=一周内",
+      "params": {
+        "keyword": "旅游",
+        "offset": 0,
+        "count": 10,
+        "search_channel": "aweme_video_web",
+        "is_filter_search": 1,
+        "publish_time": 7
+      },
+      "ok": true,
+      "warn": "返回0条视频（可能无结果）",
+      "http_status": 200,
+      "api_status": 0,
+      "count": 0
+    },
+    "search_time_1month": {
+      "label": "时间筛选=一个月",
+      "params": {
+        "keyword": "旅游",
+        "offset": 0,
+        "count": 10,
+        "search_channel": "aweme_video_web",
+        "is_filter_search": 1,
+        "publish_time": 30
+      },
+      "ok": true,
+      "warn": "返回0条视频（可能无结果）",
+      "http_status": 200,
+      "api_status": 0,
+      "count": 0
+    },
+    "search_time_6month": {
+      "label": "时间筛选=半年",
+      "params": {
+        "keyword": "旅游",
+        "offset": 0,
+        "count": 10,
+        "search_channel": "aweme_video_web",
+        "is_filter_search": 1,
+        "publish_time": 180
+      },
+      "ok": true,
+      "warn": "返回0条视频（可能无结果）",
+      "http_status": 200,
+      "api_status": 0,
+      "count": 0
+    },
+    "search_time_1year": {
+      "label": "时间筛选=一年",
+      "params": {
+        "keyword": "旅游",
+        "offset": 0,
+        "count": 10,
+        "search_channel": "aweme_video_web",
+        "is_filter_search": 1,
+        "publish_time": 365
+      },
+      "ok": true,
+      "warn": "返回0条视频（可能无结果）",
+      "http_status": 200,
+      "api_status": 0,
+      "count": 0
+    },
+    "search_sort_digg": {
+      "label": "排序=最多点赞",
+      "params": {
+        "keyword": "旅游",
+        "offset": 0,
+        "count": 10,
+        "search_channel": "aweme_video_web",
+        "is_filter_search": 1,
+        "sort_type": 1
+      },
+      "ok": true,
+      "warn": "返回0条视频（可能无结果）",
+      "http_status": 200,
+      "api_status": 0,
+      "count": 0
+    },
+    "search_sort_comment": {
+      "label": "排序=最多评论",
+      "params": {
+        "keyword": "旅游",
+        "offset": 0,
+        "count": 10,
+        "search_channel": "aweme_video_web",
+        "is_filter_search": 1,
+        "sort_type": 2
+      },
+      "ok": true,
+      "warn": "返回0条视频（可能无结果）",
+      "http_status": 200,
+      "api_status": 0,
+      "count": 0
+    },
+    "search_sort_new": {
+      "label": "排序=最新发布",
+      "params": {
+        "keyword": "旅游",
+        "offset": 0,
+        "count": 10,
+        "search_channel": "aweme_video_web",
+        "is_filter_search": 1,
+        "sort_type": 3
+      },
+      "ok": true,
+      "warn": "返回0条视频（可能无结果）",
+      "http_status": 200,
+      "api_status": 0,
+      "count": 0
+    },
+    "search_dur_1min": {
+      "label": "时长=1分钟以内",
+      "params": {
+        "keyword": "旅游",
+        "offset": 0,
+        "count": 10,
+        "search_channel": "aweme_video_web",
+        "is_filter_search": 1,
+        "duration": 1
+      },
+      "ok": true,
+      "warn": "返回0条视频（可能无结果）",
+      "http_status": 200,
+      "api_status": 0,
+      "count": 0
+    },
+    "search_dur_1_5min": {
+      "label": "时长=1-5分钟",
+      "params": {
+        "keyword": "旅游",
+        "offset": 0,
+        "count": 10,
+        "search_channel": "aweme_video_web",
+        "is_filter_search": 1,
+        "duration": 2
+      },
+      "ok": true,
+      "warn": "返回0条视频（可能无结果）",
+      "http_status": 200,
+      "api_status": 0,
+      "count": 0
+    },
+    "search_dur_5min_plus": {
+      "label": "时长=5分钟以上",
+      "params": {
+        "keyword": "旅游",
+        "offset": 0,
+        "count": 10,
+        "search_channel": "aweme_video_web",
+        "is_filter_search": 1,
+        "duration": 3
+      },
+      "ok": true,
+      "warn": "返回0条视频（可能无结果）",
+      "http_status": 200,
+      "api_status": 0,
+      "count": 0
+    },
+    "search_combo_1": {
+      "label": "组合：一周内+最多评论+1-5分钟",
+      "params": {
+        "keyword": "旅游",
+        "offset": 0,
+        "count": 10,
+        "search_channel": "aweme_video_web",
+        "is_filter_search": 1,
+        "publish_time": 7,
+        "sort_type": 2,
+        "duration": 2
+      },
+      "ok": true,
+      "warn": "返回0条视频（可能无结果）",
+      "http_status": 200,
+      "api_status": 0,
+      "count": 0
+    },
+    "search_page2": {
+      "label": "翻页（offset=10）",
+      "params": {
+        "keyword": "旅游",
+        "offset": 10,
+        "count": 10,
+        "search_channel": "aweme_video_web",
+        "is_filter_search": 0
+      },
+      "ok": true,
+      "warn": "返回0条视频（可能无结果）",
+      "http_status": 200,
+      "api_status": 0,
+      "count": 0
+    },
+    "search_count_20": {
+      "label": "每页数量=20",
+      "params": {
+        "keyword": "旅游",
+        "offset": 0,
+        "count": 20,
+        "search_channel": "aweme_video_web",
+        "is_filter_search": 0
+      },
+      "ok": true,
+      "warn": "返回0条视频（可能无结果）",
+      "http_status": 200,
+      "api_status": 0,
+      "count": 0
+    },
+    "search_count_50": {
+      "label": "每页数量=50",
+      "params": {
+        "keyword": "旅游",
+        "offset": 0,
+        "count": 50,
+        "search_channel": "aweme_video_web",
+        "is_filter_search": 0
+      },
+      "ok": true,
+      "warn": "返回0条视频（可能无结果）",
+      "http_status": 200,
+      "api_status": 0,
+      "count": 0
+    },
+    "im_unread": {
+      "label": "IM未读消息数",
+      "ok": false,
+      "proto_size": null,
+      "error": "Failed to fetch"
+    },
+    "im_conv_list": {
+      "label": "IM会话列表",
+      "ok": false,
+      "proto_size": null,
+      "error": "Failed to fetch"
+    },
+    "im_stranger": {
+      "label": "IM陌生人会话列表",
+      "ok": false,
+      "proto_size": null,
+      "error": "Failed to fetch"
+    },
+    "im_msg_init": {
+      "label": "IM消息初始化",
+      "ok": false,
+      "proto_size": null,
+      "error": "Failed to fetch"
+    },
+    "im_user_info": {
+      "label": "IM用户信息查询",
+      "ok": true,
+      "http_status": 200,
+      "api_status": 0,
+      "proto_size": null
+    },
+    "im_heartbeat": {
+      "label": "IM心跳保活",
+      "ok": false,
+      "http_status": 200,
+      "api_status": 5,
+      "proto_size": null
+    }
+  },
+  "summary": {
+    "total": 24,
+    "passed": 3,
+    "failed": 5,
+    "warned": 16
+  },
+  "confirmed_params": {
+    "publish_time": {
+      "1": "一天内",
+      "30": "一个月",
+      "180": "半年",
+      "365": "一年"
+    },
+    "sort_type": {
+      "1": "最多点赞",
+      "3": "最新发布"
+    },
+    "duration": {
+      "1": "1分钟以内",
+      "3": "5分钟以上"
+    }
+  },
+  "login_status": {
+    "http_status": 200,
+    "status_code": 0,
+    "is_logged_in": true
+  },
+  "actual_captured_search_urls": [
+    "https://www.douyin.com/aweme/v1/web/search/item/?device_platform=webapp&aid=6383&channel=channel_pc_web&version_code=170400&version_name=17.4.0&keyword=%E6%97%85%E6%B8%B8&offset=0&count=10&search_channel=aweme_video_web&search_source=normal_search&enable_history=1&is_filter_search=0&msToken=Xfl-qkTojftg2XhvYLy0nZWujUkaiYo8Jr_yLMewLIVA-NoNLn2-JbST5a0_VbpeQk3GqEqXBhJz89fSx6e5AD-nGDsiHCIaoCea69WvWcENENidI7nDQOllrRQhmuFglpzge2BfPq6zZz0wk3_ZT90lHhf79lxsKsc%3D&a_bogus=myURg7yimoWnCVMbYKj9tn%2FlHLflrs8yGziKSuFPHPK3aXlYhbNFTnSQnxwbsoxgRYpwiCVH6De%2FYDncY0XhZoHkumpvSgGRcT25V8vL2qi3a0JsLHDZC8szFwsbl5sLa5QriHv5UsMwgxOlnqKPAN-ae5FjRQmpbqe9dFuycDSUpT6TVnVbe-2j",
+    "https://www.douyin.com/aweme/v1/web/search/item/?device_platform=webapp&aid=6383&channel=channel_pc_web&version_code=170400&version_name=17.4.0&keyword=%E6%97%85%E6%B8%B8&offset=0&count=10&search_channel=aweme_video_web&is_filter_search=1&publish_time=1&msToken=Xfl-qkTojftg2XhvYLy0nZWujUkaiYo8Jr_yLMewLIVA-NoNLn2-JbST5a0_VbpeQk3GqEqXBhJz89fSx6e5AD-nGDsiHCIaoCea69WvWcENENidI7nDQOllrRQhmuFglpzge2BfPq6zZz0wk3_ZT90lHhf79lxsKsc%3D&a_bogus=Ef05kqyjEoRccV%2FSucbItrelm2fANsuyhTi%2FSToTCNKCa7zbdbPZTnbQrxqb42dgbYpwie17IDelYEdcY0XwZo9kKmkfuPJbcT29Vh8L0qwpaMvsDHDNC08FzwBTMb4L-%2FdeiHX56s0ygdclnHKqAPlGy5FimYRpWqHndFz9rDCUpTgTnnQyeVuWj1j%3D",
+    "https://www.douyin.com/aweme/v1/web/search/item/?device_platform=webapp&aid=6383&channel=channel_pc_web&version_code=170400&version_name=17.4.0&keyword=%E6%97%85%E6%B8%B8&offset=0&count=10&search_channel=aweme_video_web&is_filter_search=1&publish_time=7&msToken=fLFiYkwjDfKjN8OlpiTMZu5nmlFHlUgO84hJmGLYV23uL_k15FAkCE6N3Qd-VdTxvz4Lqc8uH4_6FvuyeuQfEwhxWL7_Ws5nqo8j563LOrL6VOLpgoIIZXl1hI3GYmCGwQem8-HNHpgBYUz9HlR0aC_1afb2adCcgMcd8ARwzPKw&a_bogus=D7sVgwUjdq8jPd%2FbuKbAttrlBtgMrT8yOTi2bqKP9NFea7zb5mNq0OGmbxwT4odgRuBsi9I7WDtMYddcY0UiZFHkompkuPwRct2IV8mL%2FqqVPFisLNmZC88zuwsGM5sLl5QriCX5AsMLgdQlnqKNANAG95FjRQmpRNendKzyrDCU3sLTVoQee3XAVXL%3D",
+    "https://www.douyin.com/aweme/v1/web/search/item/?device_platform=webapp&aid=6383&channel=channel_pc_web&version_code=170400&version_name=17.4.0&keyword=%E6%97%85%E6%B8%B8&offset=0&count=10&search_channel=aweme_video_web&is_filter_search=1&publish_time=30&msToken=fLFiYkwjDfKjN8OlpiTMZu5nmlFHlUgO84hJmGLYV23uL_k15FAkCE6N3Qd-VdTxvz4Lqc8uH4_6FvuyeuQfEwhxWL7_Ws5nqo8j563LOrL6VOLpgoIIZXl1hI3GYmCGwQem8-HNHpgBYUz9HlR0aC_1afb2adCcgMcd8ARwzPKw&a_bogus=xj05DeSwdo8nOV%2FSucj9tSHlFAL%2FNTWyB4ixRyxPeNTJaXtG5WPPsNbmJxqT4LVgbbBziC37UDtlbdVcusXkZK9kqmkfSxtycG%2FVVhfoMqidPzksDHDpC00zwwBYMb4LlAdaiHX5WsM76DclVNKBAN-Gt5FEmQmpWreAdKTybDC03PyTVxOvta2Z",
+    "https://www.douyin.com/aweme/v1/web/search/item/?device_platform=webapp&aid=6383&channel=channel_pc_web&version_code=170400&version_name=17.4.0&keyword=%E6%97%85%E6%B8%B8&offset=0&count=10&search_channel=aweme_video_web&is_filter_search=1&publish_time=180&msToken=fLFiYkwjDfKjN8OlpiTMZu5nmlFHlUgO84hJmGLYV23uL_k15FAkCE6N3Qd-VdTxvz4Lqc8uH4_6FvuyeuQfEwhxWL7_Ws5nqo8j563LOrL6VOLpgoIIZXl1hI3GYmCGwQem8-HNHpgBYUz9HlR0aC_1afb2adCcgMcd8ARwzPKw&a_bogus=D70RkeSiQNmjeVMSYCj9t9xlblf%2FrPWyD4iQWxdTyOutP7lYH8NN0nGmrxqG4LdgbbBki93HUDt%2FbxVcmUXsZq9pLmpkSh0b5G%2FCV8vL2qNpaFisENDBChmzFwsYlcGLlQdHiCX56sMy6dclVNKNAP-aC5FjRYbpbqHcdFTybDSWpPLT9x2reaZt"
+  ]
+}

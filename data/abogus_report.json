@@ -1,0 +1,48 @@
+{
+  "sdkFilesFound": [
+    "webmssdk.es5.js"
+  ],
+  "stage1": {
+    "window.byted_acrawler": {
+      "type": "object",
+      "keys": [
+        "frontierSign",
+        "getReferer",
+        "init",
+        "isWebmssdk",
+        "report",
+        "setConfig",
+        "setTTWebid",
+        "setTTWebidV2",
+        "setTTWid",
+        "setUserMode"
+      ]
+    },
+    "_matchedKeys": [
+      "SDKRuntime",
+      "useWebSecsdkApi",
+      "SDKNativeWebApi",
+      "byted_acrawler",
+      "_sdkGlueVersionMap",
+      "_SdkGlueInit",
+      "verifySDK",
+      "securitySDK",
+      "DTraitSDK"
+    ]
+  },
+  "stage2": {
+    "matchedKeys": [
+      "SDKRuntime",
+      "useWebSecsdkApi",
+      "SDKNativeWebApi",
+      "byted_acrawler",
+      "_sdkGlueVersionMap",
+      "_SdkGlueInit",
+      "verifySDK",
+      "securitySDK",
+      "DTraitSDK"
+    ],
+    "signAttempts": {}
+  },
+  "workingSign": null
+}

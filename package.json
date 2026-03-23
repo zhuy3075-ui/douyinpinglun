@@ -1,0 +1,18 @@
+{
+  "name": "--main",
+  "version": "1.0.0",
+  "description": "[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![Version](https://img.shields.io/badge/version-2.0-green.svg)](https://github.com/cxiniao/-) [![Windows](https://img.shields.io/badge/platform-Windows-orange.svg)](https://github.com/cxiniao/-)",
+  "main": "index.js",
+  "scripts": {
+    "refresh": "node tools/refresh_cookie.js",
+    "sign":    "node signing_server.js",
+    "test":    "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright": "^1.58.2"
+  }
+}

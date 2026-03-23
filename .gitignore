@@ -1,0 +1,30 @@
+# Node
+node_modules/
+frontend/node_modules/
+npm-debug.log*
+
+# Build output
+frontend/dist/
+frontend/.vite/
+
+# Data / secrets
+data/cookie_store.json
+data/cookies/
+data/*.enc
+
+# Go build
+go-backend/bin/
+*.exe
+*.dll
+
+# Pencil design file (binary, large — kept in ui-exports as PNG)
+pencil-new.pen
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/settings.json
+.idea/
